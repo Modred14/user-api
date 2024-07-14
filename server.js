@@ -4,12 +4,16 @@ const bodyParser = require("body-parser");
 const { v4: uuidv4 } = require("uuid");
 
 const app = express();
-const port = 5000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(bodyParser.json());
 
 let users = [];
+
+app.get("/", (req, res) => {
+  res.send("Hello, Vercel!");
+});
 
 app.get("/users", (req, res) => {
   res.json(users);
@@ -58,6 +62,6 @@ app.post("/login", (req, res) => {
   res.status(200).json({ message: "Login successful", user: userWithoutPassword });
 });
 
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
 });
