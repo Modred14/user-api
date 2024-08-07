@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "scissors": "scissors-altschool-favour",
+    "default": "scissors-altschool-favour"
+  },
+  "targets": {},
+  "etags": {},
+  "dataconnectEmulatorConfig": {}
+}
