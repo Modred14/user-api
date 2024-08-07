@@ -41,6 +41,9 @@ interface Domain {
 interface WhoisResponse {
   domainName?: string;
   registrar?: string;
+  createdDate?: string;
+  status?: string;
+  updatedDate?: string;
 }
 
 let users: User[] = [];
@@ -320,13 +323,19 @@ app.delete("/users/:userId/links/:linkId", (req: Request, res: Response) => {
 });
 app.get("/check-domain", async (req: Request, res: Response) => {
   const { domain } = req.query as { domain: string };
+
   try {
-    const result = await whois(domain) as WhoisResponse;
-    console.log(result); // Log the WHOIS data for debugging
+    const result = (await whois(domain)) as WhoisResponse;
+    console.log("WHOIS result:", result); // Log the WHOIS data for debugging
 
     // Check if the WHOIS data indicates the domain is registered
     const isAvailable = !result.domainName && !result.registrar;
-    res.json({ available: isAvailable });
+
+    // Additional checks
+    const otherFieldsIndicatingAvailability =
+      !result["status"] && !result["createdDate"] && !result["updatedDate"];
+
+    res.json({ available: isAvailable && otherFieldsIndicatingAvailability });
   } catch (error) {
     console.error("Error checking domain:", error);
     res.status(500).json({ error: "Error checking domain" });
@@ -356,8 +365,8 @@ app.get("/get-domains", (req: Request, res: Response) => {
 });
 
 app.delete("/remove-domain", (req: Request, res: Response) => {
-  const { id } = req.body;
-  const index = customDomains.findIndex((d) => d.id === id);
+  const { domain } = req.body;
+  const index = customDomains.findIndex((d) => d.domain === domain);
   if (index !== -1) {
     customDomains.splice(index, 1);
     res.json({
