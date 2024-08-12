@@ -242,7 +242,6 @@ app.put("/users/:id", async (req: Request, res: Response) => {
       ...userDoc.data(),
       firstName,
       lastName,
-      username,
       email,
       password,
       profileImg,
@@ -350,26 +349,29 @@ app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
     if (linkIndex === -1) {
       return res.status(404).json({ message: "Link not found" });
     }
-    const link = user.links[linkIndex];
-    link.title = title || link.title;
-    link.mainLink = mainLink || link.mainLink;
-    link.shortenedLink = shortenedLink || link.shortenedLink;
-    link.qrcode = qrcode || link.qrcode;
-    link.customLink = customLink || link.customLink;
 
-    await db
-      .collection("users")
-      .doc(userId)
-      .update({
-        links: admin.firestore.FieldValue.arrayUnion(link),
-      });
+    // Update the link properties
+    user.links[linkIndex] = {
+      ...user.links[linkIndex],
+      title: title || user.links[linkIndex].title,
+      mainLink: mainLink || user.links[linkIndex].mainLink,
+      shortenedLink: shortenedLink || user.links[linkIndex].shortenedLink,
+      qrcode: qrcode || user.links[linkIndex].qrcode,
+      customLink: customLink || user.links[linkIndex].customLink,
+    };
 
-    res.status(200).json(link);
+    // Update the user document with the modified links array
+    await db.collection("users").doc(userId).update({
+      links: user.links,
+    });
+
+    res.status(200).json(user.links[linkIndex]);
   } catch (error) {
     console.error("Error updating link:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
+
 
 app.delete("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { userId, linkId } = req.params;
