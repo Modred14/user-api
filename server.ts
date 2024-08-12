@@ -9,7 +9,7 @@ const serviceAccount = require("./scissors-altschool-favour-firebase-adminsdk-3j
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: 'https://scissors-altschool-favour-default-rtdb.firebaseio.com'
+  databaseURL: "https://scissors-altschool-favour-default-rtdb.firebaseio.com",
 });
 
 const db = admin.firestore();
@@ -48,7 +48,7 @@ interface Domain {
   domain: string;
 }
 
-declare module 'express-serve-static-core' {
+declare module "express-serve-static-core" {
   interface Request {
     user?: admin.auth.DecodedIdToken;
   }
@@ -64,7 +64,6 @@ interface WhoisResponse {
 
 let users: User[] = [];
 
-
 app.get("/", (req: Request, res: Response) => {
   res.json({ message: "Hi there, welcome to Scissors backend api." });
 });
@@ -75,7 +74,10 @@ app.get("/users", async (req: Request, res: Response) => {
 
     if (email) {
       // Query the database to check if the email exists
-      const usersSnapshot = await db.collection("users").where("email", "==", email).get();
+      const usersSnapshot = await db
+        .collection("users")
+        .where("email", "==", email)
+        .get();
 
       if (usersSnapshot.empty) {
         return res.status(404).json({ exists: false });
@@ -93,10 +95,9 @@ app.get("/users", async (req: Request, res: Response) => {
 });
 
 app.post("/users", async (req: Request, res: Response) => {
-  const { firstName, lastName, email, password, profileImg, links } =
-    req.body;
+  const { firstName, lastName, email, password, profileImg, links } = req.body;
 
-    console.log("Received data:", req.body);
+  console.log("Received data:", req.body);
   const formattedLinks = links
     ? links.map((link: Partial<Link>) => ({
         id: uuidv4(),
@@ -131,7 +132,11 @@ app.post("/users", async (req: Request, res: Response) => {
   }
 });
 
-const authenticateUser = async (req: Request, res: Response, next: Function) => {
+const authenticateUser = async (
+  req: Request,
+  res: Response,
+  next: Function
+) => {
   const idToken = req.headers.authorization?.split("Bearer ")[1];
   if (!idToken) {
     return res.status(401).json({ message: "No token provided" });
@@ -150,40 +155,74 @@ app.get("/protected", authenticateUser, (req: Request, res: Response) => {
   res.json({ message: "This is a protected route" });
 });
 
-app.post("/login", (req: Request, res: Response) => {
+app.post("/login", async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
-  const user = users.find((user) => user.email === email);
-  if (!user) {
-    return res.status(401).json({ message: "User not found. Please Sign Up." });
-  }
+  try {
+    const userDoc = await db
+      .collection("users")
+      .where("email", "==", email)
+      .limit(1)
+      .get();
 
-  if (user.password !== password) {
-    return res.status(401).json({ message: "Invalid email or password" });
-  }
+    if (userDoc.empty) {
+      return res
+        .status(401)
+        .json({ message: "User not found. Please Sign Up." });
+    }
 
-  res.status(200).json({ message: "Login successful", user });
+    const userData = userDoc.docs[0].data();
+
+    // Verify password (ensure you hash passwords and compare hashed values in real scenarios)
+    if (userData.password !== password) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    res.status(200).json({ message: "Login successful", user: userData });
+  } catch (error) {
+    console.error("Error during login:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 });
 
 // Endpoint to increment link clicks and add visit
-app.post("/links/:linkId/click", (req: Request, res: Response) => {
+app.post("/links/:linkId/click", async (req: Request, res: Response) => {
   const { linkId } = req.params;
-  const user = users.find((user) =>
-    user.links.some((link) => link.id === linkId)
-  );
+  try {
+    // Query Firestore to find the user with the given linkId
+    const userSnapshot = await db
+      .collection("users")
+      .where("links", "array-contains", { id: linkId })
+      .get();
 
-  if (!user) {
-    return res.status(404).json({ message: "Link not found" });
-  }
+    if (userSnapshot.empty) {
+      return res.status(404).json({ message: "Link not found" });
+    }
 
-  const link = user.links.find((link) => link.id === linkId);
-  if (link) {
-    link.clicks += 1;
-    link.visits.push(new Date().toISOString());
+    const userDoc = userSnapshot.docs[0];
+    const userData = userDoc.data();
+    const links = userData.links as Array<{
+      id: string;
+      clicks: number;
+      visits: string[];
+    }>;
 
-    res.status(200).json(link);
-  } else {
-    return res.status(404).json({ message: "Link not found" });
+    const link = links.find((link) => link.id === linkId);
+    if (link) {
+      link.clicks += 1;
+      link.visits.push(new Date().toISOString());
+
+      await db.collection("users").doc(userDoc.id).update({
+        links: links,
+      });
+
+      res.status(200).json(link);
+    } else {
+      return res.status(404).json({ message: "Link not found" });
+    }
+  } catch (error) {
+    console.error("Error updating link clicks:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 app.put("/users/:id", async (req: Request, res: Response) => {
@@ -248,99 +287,165 @@ app.post("/users/:userId/links", async (req: Request, res: Response) => {
     createdAt,
   } = req.body;
 
-  const user = users.find((user) => user.id === userId);
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+  try {
+    // Fetch the user from Firestore
+    const userDoc = await db.collection("users").doc(userId).get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const userData = userDoc.data();
+
+    if (!userData) {
+      return res.status(404).json({ message: "User data not found" });
+    }
+
+    const newLink = {
+      id: uuidv4(),
+      title: title || mainLink,
+      mainLink,
+      shortenedLink,
+      qrcode,
+      customLink,
+      clicks: clicks || 0,
+      visits: visits || [],
+      createdAt: createdAt || new Date().toISOString(),
+    };
+
+    const userLinks = userData.links || [];
+    userLinks.push(newLink);
+
+    // Update the user document with the new link
+    await db.collection("users").doc(userId).update({ links: userLinks });
+
+    res.status(201).json(newLink);
+  } catch (error) {
+    console.error("Error adding link:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
-
-  const newLink = {
-    id: uuidv4(),
-    title: title || mainLink,
-    mainLink,
-    shortenedLink,
-    qrcode,
-    customLink,
-    clicks: clicks || 0,
-    visits: visits || [],
-    createdAt: createdAt || new Date().toISOString(),
-  };
-
-  user.links.push(newLink);
-  res.status(201).json(newLink);
 });
 
-app.put("/users/:userId/links/:linkId", (req: Request, res: Response) => {
+app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { userId, linkId } = req.params;
   const { title, mainLink, shortenedLink, qrcode, customLink } = req.body;
-  const user = users.find((user) => user.id === userId);
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+  try {
+    // Fetch the user document from Firestore
+    const userDoc = await db.collection("users").doc(userId).get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const user = userDoc.data();
+
+    if (!user || !user.links) {
+      return res.status(404).json({ message: "Links not found for this user" });
+    }
+
+    // Find the link to update
+    const linkIndex = user.links.findIndex((link: any) => link.id === linkId);
+
+    if (linkIndex === -1) {
+      return res.status(404).json({ message: "Link not found" });
+    }
+    const link = user.links[linkIndex];
+    link.title = title || link.title;
+    link.mainLink = mainLink || link.mainLink;
+    link.shortenedLink = shortenedLink || link.shortenedLink;
+    link.qrcode = qrcode || link.qrcode;
+    link.customLink = customLink || link.customLink;
+
+    await db
+      .collection("users")
+      .doc(userId)
+      .update({
+        links: admin.firestore.FieldValue.arrayUnion(link),
+      });
+
+    res.status(200).json(link);
+  } catch (error) {
+    console.error("Error updating link:", error);
+    res.status(500).json({ message: "Internal Server Error" });
   }
-
-  const link = user.links.find((link) => link.id === linkId);
-
-  if (!link) {
-    return res.status(404).json({ message: "Link not found" });
-  }
-
-  link.title = title || link.title;
-  link.mainLink = mainLink || link.mainLink;
-  link.shortenedLink = shortenedLink || link.shortenedLink;
-  link.qrcode = qrcode || link.qrcode;
-  link.customLink = customLink || link.customLink;
-
-  res.status(200).json(link);
 });
 
-app.delete("/users/:userId/links/:linkId", (req: Request, res: Response) => {
+app.delete("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { userId, linkId } = req.params;
-  const user = users.find((user) => user.id === userId);
+  try {
+    const userDoc = await db.collection("users").doc(userId).get();
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const userData = userDoc.data();
+    const links = userData?.links || [];
+
+    const linkIndex = links.findIndex((link: any) => link.id === linkId);
+
+    if (linkIndex === -1) {
+      return res.status(404).json({ message: "Link not found" });
+    }
+
+    links.splice(linkIndex, 1);
+    await db.collection("users").doc(userId).update({ links });
+
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting link", error });
   }
-
-  const linkIndex = user.links.findIndex((link) => link.id === linkId);
-
-  if (linkIndex === -1) {
-    return res.status(404).json({ message: "Link not found" });
-  }
-
-  user.links.splice(linkIndex, 1);
-
-  res.status(204).send();
 });
 
-app.get("/users/:userId/links", (req: Request, res: Response) => {
+app.get("/users/:userId/links", async (req: Request, res: Response) => {
   const { userId } = req.params;
-  const user = users.find((user) => user.id === userId);
+  try {
+    const userDoc = await db.collection('users').doc(userId).get();
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const userData = userDoc.data();
+    const links = userData?.links || [];
+
+    res.status(200).json(links);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching user links", error });
   }
-
-  res.status(200).json(user.links);
 });
 
-app.get("/users/:userId/links/:linkId", (req: Request, res: Response) => {
+app.get("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { userId, linkId } = req.params;
-  const user = users.find((user) => user.id === userId);
+  try {
+    // Fetch user document from Firestore
+    const userDoc = await db.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+    const user = userDoc.data();
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const links = user.links || [];
+    const link = links.find((link: any) => link.id === linkId);
+
+    if (!link) {
+      return res.status(404).json({ message: "Link not found" });
+    }
+
+    res.status(200).json(link);
+  } catch (error) {
+    console.error("Error fetching user or link:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
-
-  const link = user.links.find((link) => link.id === linkId);
-
-  if (!link) {
-    return res.status(404).json({ message: "Link not found" });
-  }
-
-  res.status(200).json(link);
 });
 
-app.put("/users/:userId/links/:linkId", (req: Request, res: Response) => {
+app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { userId, linkId } = req.params;
   const {
     title,
@@ -353,17 +458,26 @@ app.put("/users/:userId/links/:linkId", (req: Request, res: Response) => {
     createdAt,
   } = req.body;
 
-  const user = users.find((user) => user.id === userId);
+  try {
+    // Fetch user from Firestore
+    const userDoc = await db.collection("users").doc(userId).get();
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
-  }
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-  const link = user.links.find((link) => link.id === linkId);
+    const user = userDoc.data();
 
-  if (!link) {
-    return res.status(404).json({ message: "Link not found" });
-  }
+    if (!user || !user.links) {
+      return res.status(404).json({ message: "User links not found" });
+    }
+
+    // Find the link in the user's links
+    const link = user.links.find((link: any) => link.id === linkId);
+
+    if (!link) {
+      return res.status(404).json({ message: "Link not found" });
+    }
 
   link.title = title || link.title;
   link.mainLink = mainLink || link.mainLink;
@@ -374,26 +488,49 @@ app.put("/users/:userId/links/:linkId", (req: Request, res: Response) => {
   link.visits = visits || link.visits;
   link.createdAt = createdAt || link.createdAt;
 
+  await db.collection("users").doc(userId).update({ links: user.links });
+
   res.status(200).json(link);
+
+} catch (error) {
+  console.error("Error updating link:", error);
+  res.status(500).json({ message: "Internal server error" });
+}
 });
 
-app.delete("/users/:userId/links/:linkId", (req: Request, res: Response) => {
+app.delete("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { userId, linkId } = req.params;
-  const user = users.find((user) => user.id === userId);
+  try {
+    // Fetch user from Firestore
+    const userDoc = await db.collection('users').doc(userId).get();
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const user = userDoc.data();
+    if (!user || !user.links) {
+      return res.status(404).json({ message: "User links not found" });
+    }
+
+    // Find the link index
+    const linkIndex = user.links.findIndex((link: any) => link.id === linkId);
+
+    if (linkIndex === -1) {
+      return res.status(404).json({ message: "Link not found" });
+    }
+
+    // Remove the link
+    user.links.splice(linkIndex, 1);
+
+    // Update the user document
+    await db.collection('users').doc(userId).update({ links: user.links });
+
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting link:", error);
+    res.status(500).json({ message: "Internal Server Error" });
   }
-
-  const linkIndex = user.links.findIndex((link) => link.id === linkId);
-
-  if (linkIndex === -1) {
-    return res.status(404).json({ message: "Link not found" });
-  }
-
-  user.links.splice(linkIndex, 1);
-
-  res.status(204).send();
 });
 
 // Endpoint to create a short URL
