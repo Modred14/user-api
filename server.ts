@@ -185,6 +185,95 @@ app.post("/login", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/check-domain", async (req: Request, res: Response) => {
+  const { domain } = req.query as { domain: string };
+
+  try {
+    const result = (await whois(domain)) as WhoisResponse;
+    const isAvailable = !result.domainName && !result.registrar;
+    const otherFieldsIndicatingAvailability =
+      !result.status && !result.createdDate && !result.updatedDate;
+
+    res.json({ available: isAvailable && otherFieldsIndicatingAvailability });
+  } catch (error) {
+    res.status(500).json({ error: "Error checking domain" });
+  }
+});
+
+app.post("/add-domain", async (req: Request, res: Response) => {
+  const { id, domain } = req.body;
+  try {
+    const domainRef = db.collection("domains").doc(id);
+    const domainDoc = await domainRef.get();
+
+    if (domainDoc.exists) {
+      return res.status(400).json({ message: "Domain already exists" });
+    }
+
+    await domainRef.set({ id, domain });
+    res.json({ success: true, message: "Domain added" });
+  } catch (error) {
+    res.status(500).json({ message: "Error adding domain", error });
+  }
+});
+
+app.get("/get-domains", async (req: Request, res: Response) => {
+  try {
+    const domainsSnapshot = await db.collection("domains").get();
+    const domains = domainsSnapshot.docs.map((doc) => doc.data());
+    res.json({ domains });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching domains", error });
+  }
+});
+
+app.delete("/remove-domain", async (req: Request, res: Response) => {
+  const { domain } = req.body;
+  try {
+    const domainQuerySnapshot = await db
+      .collection("domains")
+      .where("domain", "==", domain)
+      .get();
+    const domainDoc = domainQuerySnapshot.docs[0];
+
+    if (!domainDoc) {
+      return res.status(400).json({ message: "Domain not found" });
+    }
+
+    await domainDoc.ref.delete();
+    res.json({ success: true, message: "Domain removed" });
+  } catch (error) {
+    res.status(500).json({ message: "Error removing domain", error });
+  }
+});
+
+app.put("/update-domain", async (req: Request, res: Response) => {
+  const { id, newDomain } = req.body;
+
+  try {
+    const domainRef = db.collection("domains").doc(id);
+    const domainDoc = await domainRef.get();
+
+    if (!domainDoc.exists) {
+      return res.status(400).json({ message: "Domain not found" });
+    }
+
+    const domainExistsQuerySnapshot = await db
+      .collection("domains")
+      .where("domain", "==", newDomain)
+      .get();
+
+    if (!domainExistsQuerySnapshot.empty) {
+      return res.status(400).json({ message: "New domain already exists" });
+    }
+
+    await domainRef.update({ domain: newDomain });
+    res.json({ success: true, message: "Domain updated" });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating domain", error });
+  }
+});
+
 // Endpoint to increment link clicks and add visit
 app.post("/links/:linkId/click", async (req: Request, res: Response) => {
   const { linkId } = req.params;
@@ -372,38 +461,40 @@ app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   }
 });
 
+app.delete(
+  "/users/:userId/links/:linkId",
+  async (req: Request, res: Response) => {
+    const { userId, linkId } = req.params;
+    try {
+      const userDoc = await db.collection("users").doc(userId).get();
 
-app.delete("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
-  const { userId, linkId } = req.params;
-  try {
-    const userDoc = await db.collection("users").doc(userId).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ message: "User not found" });
+      }
 
-    if (!userDoc.exists) {
-      return res.status(404).json({ message: "User not found" });
+      const userData = userDoc.data();
+      const links = userData?.links || [];
+
+      const linkIndex = links.findIndex((link: any) => link.id === linkId);
+
+      if (linkIndex === -1) {
+        return res.status(404).json({ message: "Link not found" });
+      }
+
+      links.splice(linkIndex, 1);
+      await db.collection("users").doc(userId).update({ links });
+
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Error deleting link", error });
     }
-
-    const userData = userDoc.data();
-    const links = userData?.links || [];
-
-    const linkIndex = links.findIndex((link: any) => link.id === linkId);
-
-    if (linkIndex === -1) {
-      return res.status(404).json({ message: "Link not found" });
-    }
-
-    links.splice(linkIndex, 1);
-    await db.collection("users").doc(userId).update({ links });
-
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting link", error });
   }
-});
+);
 
 app.get("/users/:userId/links", async (req: Request, res: Response) => {
   const { userId } = req.params;
   try {
-    const userDoc = await db.collection('users').doc(userId).get();
+    const userDoc = await db.collection("users").doc(userId).get();
 
     if (!userDoc.exists) {
       return res.status(404).json({ message: "User not found" });
@@ -422,14 +513,14 @@ app.get("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { userId, linkId } = req.params;
   try {
     // Fetch user document from Firestore
-    const userDoc = await db.collection('users').doc(userId).get();
-    
+    const userDoc = await db.collection("users").doc(userId).get();
+
     if (!userDoc.exists) {
       return res.status(404).json({ message: "User not found" });
     }
 
     const user = userDoc.data();
-    
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -481,59 +572,61 @@ app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Link not found" });
     }
 
-  link.title = title || link.title;
-  link.mainLink = mainLink || link.mainLink;
-  link.shortenedLink = shortenedLink || link.shortenedLink;
-  link.qrcode = qrcode || link.qrcode;
-  link.customLink = customLink || link.customLink;
-  link.clicks = clicks !== undefined ? clicks : link.clicks;
-  link.visits = visits || link.visits;
-  link.createdAt = createdAt || link.createdAt;
+    link.title = title || link.title;
+    link.mainLink = mainLink || link.mainLink;
+    link.shortenedLink = shortenedLink || link.shortenedLink;
+    link.qrcode = qrcode || link.qrcode;
+    link.customLink = customLink || link.customLink;
+    link.clicks = clicks !== undefined ? clicks : link.clicks;
+    link.visits = visits || link.visits;
+    link.createdAt = createdAt || link.createdAt;
 
-  await db.collection("users").doc(userId).update({ links: user.links });
+    await db.collection("users").doc(userId).update({ links: user.links });
 
-  res.status(200).json(link);
-
-} catch (error) {
-  console.error("Error updating link:", error);
-  res.status(500).json({ message: "Internal server error" });
-}
-});
-
-app.delete("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
-  const { userId, linkId } = req.params;
-  try {
-    // Fetch user from Firestore
-    const userDoc = await db.collection('users').doc(userId).get();
-
-    if (!userDoc.exists) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const user = userDoc.data();
-    if (!user || !user.links) {
-      return res.status(404).json({ message: "User links not found" });
-    }
-
-    // Find the link index
-    const linkIndex = user.links.findIndex((link: any) => link.id === linkId);
-
-    if (linkIndex === -1) {
-      return res.status(404).json({ message: "Link not found" });
-    }
-
-    // Remove the link
-    user.links.splice(linkIndex, 1);
-
-    // Update the user document
-    await db.collection('users').doc(userId).update({ links: user.links });
-
-    res.status(204).send();
+    res.status(200).json(link);
   } catch (error) {
-    console.error("Error deleting link:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error updating link:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
+
+app.delete(
+  "/users/:userId/links/:linkId",
+  async (req: Request, res: Response) => {
+    const { userId, linkId } = req.params;
+    try {
+      // Fetch user from Firestore
+      const userDoc = await db.collection("users").doc(userId).get();
+
+      if (!userDoc.exists) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const user = userDoc.data();
+      if (!user || !user.links) {
+        return res.status(404).json({ message: "User links not found" });
+      }
+
+      // Find the link index
+      const linkIndex = user.links.findIndex((link: any) => link.id === linkId);
+
+      if (linkIndex === -1) {
+        return res.status(404).json({ message: "Link not found" });
+      }
+
+      // Remove the link
+      user.links.splice(linkIndex, 1);
+
+      // Update the user document
+      await db.collection("users").doc(userId).update({ links: user.links });
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting link:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  }
+);
 
 // Endpoint to create a short URL
 app.post("/api/urls/shorten", async (req: Request, res: Response) => {
@@ -547,6 +640,22 @@ app.post("/api/urls/shorten", async (req: Request, res: Response) => {
     });
 
     res.status(201).json({ message: "Short URL created!", shortUrl });
+  } catch (error) {
+    res.status(500).json({ message: "Error saving short URL", error });
+  }
+});
+
+app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
+  const { longUrl, customLink } = req.body;
+  try {
+    // Save short URL to Firestore
+    await db.collection("customLinks").doc(customLink).set({
+      longUrl,
+      customLink,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.status(201).json({ message: "Short custom URL created!", customLink });
   } catch (error) {
     res.status(500).json({ message: "Error saving short URL", error });
   }
@@ -570,92 +679,23 @@ app.get("/:shortUrl", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/check-domain", async (req: Request, res: Response) => {
-  const { domain } = req.query as { domain: string };
-
+app.get("/:customLink", async (req: Request, res: Response) => {
+  const { customLink } = req.params;
   try {
-    const result = (await whois(domain)) as WhoisResponse;
-    const isAvailable = !result.domainName && !result.registrar;
-    const otherFieldsIndicatingAvailability =
-      !result.status && !result.createdDate && !result.updatedDate;
-
-    res.json({ available: isAvailable && otherFieldsIndicatingAvailability });
-  } catch (error) {
-    res.status(500).json({ error: "Error checking domain" });
-  }
-});
-
-app.post("/add-domain", async (req: Request, res: Response) => {
-  const { id, domain } = req.body;
-  try {
-    const domainRef = db.collection("domains").doc(id);
-    const domainDoc = await domainRef.get();
-
-    if (domainDoc.exists) {
-      return res.status(400).json({ message: "Domain already exists" });
-    }
-
-    await domainRef.set({ id, domain });
-    res.json({ success: true, message: "Domain added" });
-  } catch (error) {
-    res.status(500).json({ message: "Error adding domain", error });
-  }
-});
-
-app.get("/get-domains", async (req: Request, res: Response) => {
-  try {
-    const domainsSnapshot = await db.collection("domains").get();
-    const domains = domainsSnapshot.docs.map((doc) => doc.data());
-    res.json({ domains });
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching domains", error });
-  }
-});
-
-app.delete("/remove-domain", async (req: Request, res: Response) => {
-  const { domain } = req.body;
-  try {
-    const domainQuerySnapshot = await db
-      .collection("domains")
-      .where("domain", "==", domain)
-      .get();
-    const domainDoc = domainQuerySnapshot.docs[0];
-
-    if (!domainDoc) {
-      return res.status(400).json({ message: "Domain not found" });
-    }
-
-    await domainDoc.ref.delete();
-    res.json({ success: true, message: "Domain removed" });
-  } catch (error) {
-    res.status(500).json({ message: "Error removing domain", error });
-  }
-});
-
-app.put("/update-domain", async (req: Request, res: Response) => {
-  const { id, newDomain } = req.body;
-
-  try {
-    const domainRef = db.collection("domains").doc(id);
-    const domainDoc = await domainRef.get();
-
-    if (!domainDoc.exists) {
-      return res.status(400).json({ message: "Domain not found" });
-    }
-
-    const domainExistsQuerySnapshot = await db
-      .collection("domains")
-      .where("domain", "==", newDomain)
+    // Retrieve long URL from Firestore
+    const customLinkDoc = await db
+      .collection("customLinks")
+      .doc(customLink)
       .get();
 
-    if (!domainExistsQuerySnapshot.empty) {
-      return res.status(400).json({ message: "New domain already exists" });
+    if (customLinkDoc.exists) {
+      const { longUrl } = customLinkDoc.data()!;
+      res.redirect(longUrl);
+    } else {
+      res.status(404).json({ message: "URL not found!" });
     }
-
-    await domainRef.update({ domain: newDomain });
-    res.json({ success: true, message: "Domain updated" });
   } catch (error) {
-    res.status(500).json({ message: "Error updating domain", error });
+    res.status(500).json({ message: "Error retrieving short URL", error });
   }
 });
 
