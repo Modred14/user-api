@@ -659,6 +659,8 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
     if (shortUrlDoc.exists) {
       const { longUrl } = shortUrlDoc.data()!;
       res.redirect(longUrl);
+    } else {
+      res.status(404).json({ message: "Oops, Page not found. The page is either broken or deleted or does not exist." });
     }
   } catch (error) {
     res.status(500).json({ message: "Error retrieving short URL", error });
@@ -695,7 +697,9 @@ app.get("/c/:customLink", async (req: Request, res: Response): Promise<void> => 
     if (customLinkDoc.exists) {
       const { longUrl } = customLinkDoc.data()!;
       res.redirect(longUrl);
-    } 
+    } else {
+      res.status(404).json({ message: "Oops, Page not found. The page is either broken or deleted or does not exist." });
+    }
   } catch (error) {
     res.status(500).json({ message: "Error retrieving short URL", error });
   }
