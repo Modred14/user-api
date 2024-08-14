@@ -185,20 +185,6 @@ app.post("/login", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/check-domain", async (req: Request, res: Response) => {
-  const { domain } = req.query as { domain: string };
-
-  try {
-    const result = (await whois(domain)) as WhoisResponse;
-    const isAvailable = !result.domainName && !result.registrar;
-    const otherFieldsIndicatingAvailability =
-      !result.status && !result.createdDate && !result.updatedDate;
-
-    res.json({ available: isAvailable && otherFieldsIndicatingAvailability });
-  } catch (error) {
-    res.status(500).json({ error: "Error checking domain" });
-  }
-});
 
 app.post("/add-domain", async (req: Request, res: Response) => {
   const { id, domain } = req.body;
