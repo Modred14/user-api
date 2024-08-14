@@ -665,24 +665,49 @@ app.get("/:shortUrl", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/:customLink", async (req: Request, res: Response) => {
+app.get("/:customLink", async (req: Request, res: Response): Promise<void> => {
   const { customLink } = req.params;
   try {
-    // Retrieve long URL from Firestore
-    const customLinkDoc = await db
-      .collection("customLinks")
-      .doc(customLink)
-      .get();
+    const customLinkDoc = await db.collection("customLinks").doc(customLink).get();
 
     if (customLinkDoc.exists) {
       const { longUrl } = customLinkDoc.data()!;
-      res.redirect(longUrl);
+      if (longUrl && /^https?:\/\/.+/.test(longUrl)) {
+        res.redirect(longUrl);
+      } else {
+        res.status(400).json({ message: "Invalid URL format!" });
+      }
     } else {
       res.status(404).json({ message: "URL not found!" });
     }
   } catch (error) {
     res.status(500).json({ message: "Error retrieving short URL", error });
   }
+});
+
+app.get("/api/urls/allCustomLinks", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const customLinksSnapshot = await db.collection("customLinks").get();
+
+    if (customLinksSnapshot.empty) {
+      res.status(404).json({ message: "No custom links found!" });
+      return;
+    }
+
+    const customLinks: any[] = [];
+    customLinksSnapshot.forEach(doc => {
+      customLinks.push(doc.data());
+    });
+
+    res.status(200).json(customLinks);
+  } catch (error) {
+    res.status(500).json({ message: "Error retrieving custom links", error });
+  }
+});
+
+
+app.get('*', (req, res) => {
+  res.status(404).send('Page not found');
 });
 
 app.listen(PORT, () => {
