@@ -614,6 +614,22 @@ app.delete(
   }
 );
 
+app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
+  const { longUrl, customLink } = req.body;
+  try {
+    // Save short URL to Firestore
+    await db.collection("customLinks").doc(customLink).set({
+      longUrl,
+      customLink,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.status(201).json({ message: "Short custom URL created!", customLink });
+  } catch (error) {
+    res.status(500).json({ message: "Error saving short URL", error });
+  }
+});
+
 // Endpoint to create a short URL
 app.post("/api/urls/shorten", async (req: Request, res: Response) => {
   const { longUrl, shortUrl } = req.body;
@@ -631,44 +647,10 @@ app.post("/api/urls/shorten", async (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
-  const { longUrl, customLink } = req.body;
-  try {
-    // Save short URL to Firestore
-    await db.collection("customLinks").doc(customLink).set({
-      longUrl,
-      customLink,
-      createdAt: new Date().toISOString(),
-    });
 
-    res.status(201).json({ message: "Short custom URL created!", customLink });
-  } catch (error) {
-    res.status(500).json({ message: "Error saving short URL", error });
-  }
-});
-
-app.get("/:customLink", async (req: Request, res: Response): Promise<void> => {
-  const { customLink } = req.params;
-  try {
-    const customLinkDoc = await db.collection("customLinks").doc(customLink).get();
-
-    if (customLinkDoc.exists) {
-      const { longUrl } = customLinkDoc.data()!;
-      if (longUrl && /^https?:\/\/.+/.test(longUrl)) {
-        res.redirect(longUrl);
-      } else {
-        res.status(400).json({ message: "Invalid URL format!" });
-      }
-    } else {
-      res.status(404).json({ message: "URL not found!" });
-    }
-  } catch (error) {
-    res.status(500).json({ message: "Error retrieving short URL", error });
-  }
-});
 
 // Endpoint to redirect short URL to the long URL
-app.get("/:shortUrl", async (req: Request, res: Response) => {
+app.get("/s/:shortUrl", async (req: Request, res: Response) => {
   const { shortUrl } = req.params;
   try {
     // Retrieve long URL from Firestore
@@ -677,13 +659,13 @@ app.get("/:shortUrl", async (req: Request, res: Response) => {
     if (shortUrlDoc.exists) {
       const { longUrl } = shortUrlDoc.data()!;
       res.redirect(longUrl);
-    } else {
-      res.status(404).json({ message: "URL not found!" });
     }
   } catch (error) {
     res.status(500).json({ message: "Error retrieving short URL", error });
   }
 });
+
+
 
 app.get("/api/urls/allCustomLinks", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -705,11 +687,23 @@ app.get("/api/urls/allCustomLinks", async (req: Request, res: Response): Promise
   }
 });
 
+app.get("/c/:customLink", async (req: Request, res: Response): Promise<void> => {
+  const { customLink } = req.params;
+  try {
+    const customLinkDoc = await db.collection("customLinks").doc(customLink).get();
 
+    if (customLinkDoc.exists) {
+      const { longUrl } = customLinkDoc.data()!;
+      res.redirect(longUrl);
+    } 
+  } catch (error) {
+    res.status(500).json({ message: "Error retrieving short URL", error });
+  }
+});
 
 
 app.get('*', (req, res) => {
-  res.status(404).send('Page not found');
+  res.status(404).send('Oops, Page not found. The page is either broken or deleted or does not exist.');
 });
 
 app.listen(PORT, () => {
