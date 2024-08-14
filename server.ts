@@ -647,24 +647,6 @@ app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
   }
 });
 
-// Endpoint to redirect short URL to the long URL
-app.get("/:shortUrl", async (req: Request, res: Response) => {
-  const { shortUrl } = req.params;
-  try {
-    // Retrieve long URL from Firestore
-    const shortUrlDoc = await db.collection("shortUrls").doc(shortUrl).get();
-
-    if (shortUrlDoc.exists) {
-      const { longUrl } = shortUrlDoc.data()!;
-      res.redirect(longUrl);
-    } else {
-      res.status(404).json({ message: "URL not found!" });
-    }
-  } catch (error) {
-    res.status(500).json({ message: "Error retrieving short URL", error });
-  }
-});
-
 app.get("/:customLink", async (req: Request, res: Response): Promise<void> => {
   const { customLink } = req.params;
   try {
@@ -677,6 +659,24 @@ app.get("/:customLink", async (req: Request, res: Response): Promise<void> => {
       } else {
         res.status(400).json({ message: "Invalid URL format!" });
       }
+    } else {
+      res.status(404).json({ message: "URL not found!" });
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Error retrieving short URL", error });
+  }
+});
+
+// Endpoint to redirect short URL to the long URL
+app.get("/:shortUrl", async (req: Request, res: Response) => {
+  const { shortUrl } = req.params;
+  try {
+    // Retrieve long URL from Firestore
+    const shortUrlDoc = await db.collection("shortUrls").doc(shortUrl).get();
+
+    if (shortUrlDoc.exists) {
+      const { longUrl } = shortUrlDoc.data()!;
+      res.redirect(longUrl);
     } else {
       res.status(404).json({ message: "URL not found!" });
     }
@@ -704,6 +704,8 @@ app.get("/api/urls/allCustomLinks", async (req: Request, res: Response): Promise
     res.status(500).json({ message: "Error retrieving custom links", error });
   }
 });
+
+
 
 
 app.get('*', (req, res) => {
