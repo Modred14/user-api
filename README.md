@@ -34,16 +34,6 @@ cd scissors-api
 npm install
 \`\`\`
 
-## Authentication
-
-The Scissors API uses API keys to authenticate requests. You can obtain your API key from the Scissors dashboard.
-
-To authenticate your requests, include the API key in the \`Authorization\` header:
-
-\`\`\`http
-Authorization: Bearer YOUR_API_KEY
-\`\`\`
-
 ## Endpoints
 
 ### Create Short URL
@@ -57,7 +47,7 @@ Creates a short URL from a long URL.
 \`\`\`json
 {
   "longUrl": "https://www.example.com/very/long/url",
-  "customAlias": "optional-alias" // optional
+  "customLink": "optional-link" // optional
 }
 \`\`\`
 
@@ -67,7 +57,7 @@ Creates a short URL from a long URL.
 {
   "shortUrl": "https://scissors.io/short123",
   "originalUrl": "https://www.example.com/very/long/url",
-  "customAlias": "optional-alias" // if provided
+ "customLink": "optional-link" // if provided
 }
 \`\`\`
 
