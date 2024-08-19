@@ -13,7 +13,7 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
-const firebaseAdmin = admin.auth();
+const firebaseAdminAuth = admin.auth();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -172,7 +172,7 @@ app.post("/login", async (req: Request, res: Response) => {
     const userData = userDoc.docs[0].data();
     const userId = userDoc.docs[0].id;
     try {
-      const userCredential = await firebaseAdmin.getUserByEmail(email);
+      const userCredential = await firebaseAdminAuth.getUserByEmail(email);
 
       if (!userCredential) {
         return res.status(401).json({ message: "Authentication failed." });
@@ -351,12 +351,26 @@ app.delete("/users/:id", async (req: Request, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const userData = userDoc.data();
+
+ 
+    try {
+      await firebaseAdminAuth.deleteUser(id);
+      console.log("User deleted from Firebase Authentication.");
+    } catch (error) {
+      console.error("Error deleting user from Firebase Authentication:", error);
+      return res.status(500).json({ message: "Failed to delete user from Firebase Authentication." });
+    }
+
+    
     await userRef.delete();
     res.status(200).json({ message: "User deleted successfully" });
   } catch (error) {
+    console.error("Error during account deletion:", error);
     res.status(500).json({ message: "Error deleting user", error });
   }
 });
+
 
 app.post("/users/:userId/links", async (req: Request, res: Response) => {
   const { userId } = req.params;
