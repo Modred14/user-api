@@ -342,35 +342,48 @@ app.put("/users/:id", async (req: Request, res: Response) => {
 
 app.delete("/users/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
 
   try {
-    const userRef = db.collection("users").doc(id);
-    const userDoc = await userRef.get();
+    const userRecord = await firebaseAdminAuth.getUserByEmail(email);
+    const firebaseUid = userRecord.uid;
 
-    if (!userDoc.exists) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const userData = userDoc.data();
-
- 
     try {
-      await firebaseAdminAuth.deleteUser(id);
+      await firebaseAdminAuth.deleteUser(firebaseUid);
       console.log("User deleted from Firebase Authentication.");
     } catch (error) {
       console.error("Error deleting user from Firebase Authentication:", error);
-      return res.status(500).json({ message: "Failed to delete user from Firebase Authentication." });
+      return res.status(500).json({
+        message: "Failed to delete user from Firebase Authentication.",
+      });
     }
 
-    
-    await userRef.delete();
-    res.status(200).json({ message: "User deleted successfully" });
+    const userRef = db.collection("users").doc(id);
+    const userDoc = await userRef.get();
+
+    if (userDoc.exists) {
+      try {
+        await userRef.delete();
+        console.log("User document deleted from Firestore.");
+        res.status(200).json({ message: "User deleted successfully" });
+      } catch (error) {
+        console.error("Error deleting user document from Firestore:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to delete user document from Firestore." });
+      }
+    } else {
+      res.status(404).json({ message: "User not found in Firestore" });
+    }
   } catch (error) {
-    console.error("Error during account deletion:", error);
-    res.status(500).json({ message: "Error deleting user", error });
+    console.error("Error retrieving user by email:", error);
+    res.status(500).json({ message: "Error retrieving user by email" });
   }
 });
-
 
 app.post("/users/:userId/links", async (req: Request, res: Response) => {
   const { userId } = req.params;
