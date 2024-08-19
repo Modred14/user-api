@@ -3,6 +3,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import { v4 as uuidv4 } from "uuid";
 import admin from "firebase-admin";
+
 // Initialize Firebase
 const serviceAccount = require("./scissors-altschool-favour-firebase-adminsdk-3jha8-3f022b5646.json");
 
@@ -12,7 +13,7 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
-
+const firebaseAdmin = admin.auth();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -72,7 +73,6 @@ app.get("/users", async (req: Request, res: Response) => {
     const email = req.query.email as string;
 
     if (email) {
-      // Query the database to check if the email exists
       const usersSnapshot = await db
         .collection("users")
         .where("email", "==", email)
@@ -117,8 +117,7 @@ app.post("/users", async (req: Request, res: Response) => {
     lastName,
     email,
     profileImg:
-      profileImg ||
-      "https://cdn-icons-png.flaticon.com/512/847/847969.png",
+      profileImg || "https://cdn-icons-png.flaticon.com/512/847/847969.png",
     links: formattedLinks,
     ...(password && { password }),
   };
@@ -171,19 +170,32 @@ app.post("/login", async (req: Request, res: Response) => {
     }
 
     const userData = userDoc.docs[0].data();
+    const userId = userDoc.docs[0].id;
+    try {
+      const userCredential = await firebaseAdmin.getUserByEmail(email);
 
-    // Verify password (ensure you hash passwords and compare hashed values in real scenarios)
-    if (userData.password !== password) {
+      if (!userCredential) {
+        return res.status(401).json({ message: "Authentication failed." });
+      }
+
+      if (userData.password !== password) {
+        await db.collection("users").doc(userId).update({ password });
+
+        console.log("Password updated in Firestore to match Firebase.");
+      }
+
+      return res
+        .status(200)
+        .json({ message: "Login successful", user: userData });
+    } catch (err) {
+      console.error("Error verifying password with Firebase:", err);
       return res.status(401).json({ message: "Invalid email or password" });
     }
-
-    res.status(200).json({ message: "Login successful", user: userData });
   } catch (error) {
     console.error("Error during login:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
-
 
 app.post("/add-domain", async (req: Request, res: Response) => {
   const { id, domain } = req.body;
@@ -259,11 +271,9 @@ app.put("/update-domain", async (req: Request, res: Response) => {
   }
 });
 
-// Endpoint to increment link clicks and add visit
 app.post("/links/:linkId/click", async (req: Request, res: Response) => {
   const { linkId } = req.params;
   try {
-    // Query Firestore to find the user with the given linkId
     const userSnapshot = await db
       .collection("users")
       .where("links", "array-contains", { id: linkId })
@@ -299,6 +309,7 @@ app.post("/links/:linkId/click", async (req: Request, res: Response) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 app.put("/users/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   const { firstName, lastName, username, email, password, profileImg, links } =
@@ -361,7 +372,6 @@ app.post("/users/:userId/links", async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    // Fetch the user from Firestore
     const userDoc = await db.collection("users").doc(userId).get();
 
     if (!userDoc.exists) {
@@ -389,7 +399,6 @@ app.post("/users/:userId/links", async (req: Request, res: Response) => {
     const userLinks = userData.links || [];
     userLinks.push(newLink);
 
-    // Update the user document with the new link
     await db.collection("users").doc(userId).update({ links: userLinks });
 
     res.status(201).json(newLink);
@@ -404,7 +413,6 @@ app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { title, mainLink, shortenedLink, qrcode, customLink } = req.body;
 
   try {
-    // Fetch the user document from Firestore
     const userDoc = await db.collection("users").doc(userId).get();
 
     if (!userDoc.exists) {
@@ -417,14 +425,12 @@ app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Links not found for this user" });
     }
 
-    // Find the link to update
     const linkIndex = user.links.findIndex((link: any) => link.id === linkId);
 
     if (linkIndex === -1) {
       return res.status(404).json({ message: "Link not found" });
     }
 
-    // Update the link properties
     user.links[linkIndex] = {
       ...user.links[linkIndex],
       title: title || user.links[linkIndex].title,
@@ -434,7 +440,6 @@ app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
       customLink: customLink || user.links[linkIndex].customLink,
     };
 
-    // Update the user document with the modified links array
     await db.collection("users").doc(userId).update({
       links: user.links,
     });
@@ -497,7 +502,6 @@ app.get("/users/:userId/links", async (req: Request, res: Response) => {
 app.get("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   const { userId, linkId } = req.params;
   try {
-    // Fetch user document from Firestore
     const userDoc = await db.collection("users").doc(userId).get();
 
     if (!userDoc.exists) {
@@ -537,7 +541,6 @@ app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    // Fetch user from Firestore
     const userDoc = await db.collection("users").doc(userId).get();
 
     if (!userDoc.exists) {
@@ -550,7 +553,6 @@ app.put("/users/:userId/links/:linkId", async (req: Request, res: Response) => {
       return res.status(404).json({ message: "User links not found" });
     }
 
-    // Find the link in the user's links
     const link = user.links.find((link: any) => link.id === linkId);
 
     if (!link) {
@@ -580,7 +582,6 @@ app.delete(
   async (req: Request, res: Response) => {
     const { userId, linkId } = req.params;
     try {
-      // Fetch user from Firestore
       const userDoc = await db.collection("users").doc(userId).get();
 
       if (!userDoc.exists) {
@@ -592,17 +593,14 @@ app.delete(
         return res.status(404).json({ message: "User links not found" });
       }
 
-      // Find the link index
       const linkIndex = user.links.findIndex((link: any) => link.id === linkId);
 
       if (linkIndex === -1) {
         return res.status(404).json({ message: "Link not found" });
       }
 
-      // Remove the link
       user.links.splice(linkIndex, 1);
 
-      // Update the user document
       await db.collection("users").doc(userId).update({ links: user.links });
 
       res.status(204).send();
@@ -616,7 +614,6 @@ app.delete(
 app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
   const { longUrl, customLink } = req.body;
   try {
-    // Save short URL to Firestore
     await db.collection("customLinks").doc(customLink).set({
       longUrl,
       customLink,
@@ -629,11 +626,9 @@ app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
   }
 });
 
-// Endpoint to create a short URL
 app.post("/api/urls/shorten", async (req: Request, res: Response) => {
   const { longUrl, shortUrl } = req.body;
   try {
-    // Save short URL to Firestore
     await db.collection("shortUrls").doc(shortUrl).set({
       longUrl,
       shortUrl,
@@ -646,67 +641,79 @@ app.post("/api/urls/shorten", async (req: Request, res: Response) => {
   }
 });
 
-
-
-// Endpoint to redirect short URL to the long URL
 app.get("/s/:shortUrl", async (req: Request, res: Response) => {
   const { shortUrl } = req.params;
   try {
-    // Retrieve long URL from Firestore
     const shortUrlDoc = await db.collection("shortUrls").doc(shortUrl).get();
 
     if (shortUrlDoc.exists) {
       const { longUrl } = shortUrlDoc.data()!;
       res.redirect(longUrl);
     } else {
-      res.status(404).json({ message: "Oops, Page not found. The page is either broken or deleted or does not exist." });
+      res.status(404).json({
+        message:
+          "Oops, Page not found. The page is either broken or deleted or does not exist.",
+      });
     }
   } catch (error) {
     res.status(500).json({ message: "Error retrieving short URL", error });
   }
 });
 
+app.get(
+  "/api/urls/allCustomLinks",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const customLinksSnapshot = await db.collection("customLinks").get();
 
+      if (customLinksSnapshot.empty) {
+        res.status(404).json({ message: "No custom links found!" });
+        return;
+      }
 
-app.get("/api/urls/allCustomLinks", async (req: Request, res: Response): Promise<void> => {
-  try {
-    const customLinksSnapshot = await db.collection("customLinks").get();
+      const customLinks: any[] = [];
+      customLinksSnapshot.forEach((doc) => {
+        customLinks.push(doc.data());
+      });
 
-    if (customLinksSnapshot.empty) {
-      res.status(404).json({ message: "No custom links found!" });
-      return;
+      res.status(200).json(customLinks);
+    } catch (error) {
+      res.status(500).json({ message: "Error retrieving custom links", error });
     }
-
-    const customLinks: any[] = [];
-    customLinksSnapshot.forEach(doc => {
-      customLinks.push(doc.data());
-    });
-
-    res.status(200).json(customLinks);
-  } catch (error) {
-    res.status(500).json({ message: "Error retrieving custom links", error });
   }
-});
+);
 
-app.get("/c/:customLink", async (req: Request, res: Response): Promise<void> => {
-  const { customLink } = req.params;
-  try {
-    const customLinkDoc = await db.collection("customLinks").doc(customLink).get();
+app.get(
+  "/c/:customLink",
+  async (req: Request, res: Response): Promise<void> => {
+    const { customLink } = req.params;
+    try {
+      const customLinkDoc = await db
+        .collection("customLinks")
+        .doc(customLink)
+        .get();
 
-    if (customLinkDoc.exists) {
-      const { longUrl } = customLinkDoc.data()!;
-      res.redirect(longUrl);
-    } else {
-      res.status(404).json({ message: "Oops, Page not found. The page is either broken or deleted or does not exist." });
+      if (customLinkDoc.exists) {
+        const { longUrl } = customLinkDoc.data()!;
+        res.redirect(longUrl);
+      } else {
+        res.status(404).json({
+          message:
+            "Oops, Page not found. The page is either broken or deleted or does not exist.",
+        });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Error retrieving short URL", error });
     }
-  } catch (error) {
-    res.status(500).json({ message: "Error retrieving short URL", error });
   }
-});
+);
 
-
-app.get('*', (req, res) => {
-  res.status(404).send('Oops, Page not found. The page is either broken or deleted or does not exist.');
+app.get("*", (req, res) => {
+  res
+    .status(404)
+    .send(
+      "Oops, Page not found. The page is either broken or deleted or does not exist."
+    );
 });
 
 app.listen(PORT, () => {
