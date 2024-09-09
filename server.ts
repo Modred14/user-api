@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
 import { v4 as uuidv4 } from "uuid";
+import { getUserLocation } from "./LocationService";
 import admin from "firebase-admin";
 
 // Initialize Firebase
@@ -674,7 +675,31 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
     const shortUrlDoc = await db.collection("shortUrls").doc(shortUrl).get();
 
     if (shortUrlDoc.exists) {
-      const { longUrl } = shortUrlDoc.data()!;
+      const { longUrl, createdAt } = shortUrlDoc.data()!;
+      const location = await getUserLocation().catch(() => ({
+        city: "Unknown",
+        country_name: "Unknown",
+      }));
+
+      const linkClickRef = db.collection("link_clicks").doc(shortUrl);
+      await linkClickRef.set(
+        {
+          clicks: admin.firestore.FieldValue.arrayUnion({
+            linkType: "shortenedLink",
+            linkUrl: longUrl,
+            referrer: req.get("Referrer") || "direct",
+            timestamp: new Date().toISOString(),
+            createdAt: createdAt,
+            location: {
+              city: location.city,
+              country: location.country_name,
+            },
+          }),
+          clickCount: admin.firestore.FieldValue.increment(1),
+        },
+        { merge: true }
+      );
+
       res.redirect(longUrl);
     } else {
       res.status(404).json({
@@ -721,7 +746,31 @@ app.get(
         .get();
 
       if (customLinkDoc.exists) {
-        const { longUrl } = customLinkDoc.data()!;
+        const { longUrl, createdAt } = customLinkDoc.data()!;
+        const location = await getUserLocation().catch(() => ({
+          city: "Unknown",
+          country_name: "Unknown",
+        }));
+
+        const linkClickRef = db.collection("link_clicks").doc(customLink);
+        await linkClickRef.set(
+          {
+            clicks: admin.firestore.FieldValue.arrayUnion({
+              linkType: "customLink",
+              linkUrl: longUrl,
+              referrer: req.get("Referrer") || "direct",
+              timestamp: new Date().toISOString(),
+              createdAt: createdAt,
+              location: {
+                city: location.city,
+                country: location.country_name,
+              },
+            }),
+            clickCount: admin.firestore.FieldValue.increment(1),
+          },
+          { merge: true }
+        );
+
         res.redirect(longUrl);
       } else {
         res.status(404).json({
