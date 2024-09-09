@@ -651,11 +651,12 @@ app.delete(
 );
 
 app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
-  const { longUrl, customLink } = req.body;
+  const { longUrl, customLink, uniqueId } = req.body;
   try {
     await db.collection("customLinks").doc(customLink).set({
       longUrl,
       customLink,
+      uniqueId,
       createdAt: new Date().toISOString(),
     });
 
@@ -666,11 +667,12 @@ app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
 });
 
 app.post("/api/urls/shorten", async (req: Request, res: Response) => {
-  const { longUrl, shortUrl } = req.body;
+  const { longUrl, shortUrl, uniqueId } = req.body;
   try {
     await db.collection("shortUrls").doc(shortUrl).set({
       longUrl,
       shortUrl,
+      uniqueId,
       createdAt: new Date().toISOString(),
     });
 
@@ -686,7 +688,7 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
     const shortUrlDoc = await db.collection("shortUrls").doc(shortUrl).get();
 
     if (shortUrlDoc.exists) {
-      const { longUrl, createdAt } = shortUrlDoc.data()!;
+      const { longUrl, createdAt, uniqueId } = shortUrlDoc.data()!;
       const location = await getUserLocation().catch(() => ({
         city: "Unknown",
         country_name: "Unknown",
@@ -711,7 +713,7 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
         { merge: true }
       );
       try {
-        await fetch(`https://app-scissors-api.onrender.com/links/${shortUrl}/click`, {
+        await fetch(`https://app-scissors-api.onrender.com/links/${uniqueId}/click`, {
           method: "POST",
         });
       } catch (error) {
@@ -763,7 +765,7 @@ app.get(
         .get();
 
       if (customLinkDoc.exists) {
-        const { longUrl, createdAt } = customLinkDoc.data()!;
+        const { longUrl, createdAt, uniqueId } = customLinkDoc.data()!;
         const location = await getUserLocation().catch(() => ({
           city: "Unknown",
           country_name: "Unknown",
@@ -788,7 +790,7 @@ app.get(
           { merge: true }
         );
         try {
-          await fetch(`https://app-scissors-api.onrender.com/links/${customLink}/click`, {
+          await fetch(`https://app-scissors-api.onrender.com/links/${uniqueId}/click`, {
             method: "POST",
           });
         } catch (error) {
