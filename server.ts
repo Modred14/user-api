@@ -19,14 +19,14 @@ const PORT = process.env.PORT || 5000;
 
 const getUserLocation = async () => {
   try {
-    const response = await fetch('https://ipapi.co/json/');
+    const response = await fetch("https://ipapi.co/json/");
     if (response.ok) {
       return await response.json();
     }
   } catch (error) {
-    console.error('Failed to fetch location data:', error);
+    console.error("Failed to fetch location data:", error);
   }
-  return { city: 'Unknown' };
+  return { city: "Unknown" };
 };
 
 app.use(cors());
@@ -668,6 +668,7 @@ app.post("/api/urls/shortenCustom", async (req: Request, res: Response) => {
 
 app.post("/api/urls/shorten", async (req: Request, res: Response) => {
   const { longUrl, shortUrl, uniqueId } = req.body;
+
   try {
     await db.collection("shortUrls").doc(shortUrl).set({
       longUrl,
@@ -693,7 +694,7 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
         city: "Unknown",
         country_name: "Unknown",
       }));
-
+      res.redirect(longUrl);
       const linkClickRef = db.collection("link_clicks").doc(shortUrl);
       await linkClickRef.set(
         {
@@ -713,13 +714,15 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
         { merge: true }
       );
       try {
-        await fetch(`https://app-scissors-api.onrender.com/links/${uniqueId}/click`, {
-          method: "POST",
-        });
+        await fetch(
+          `https://app-scissors-api.onrender.com/links/${uniqueId}/click`,
+          {
+            method: "POST",
+          }
+        );
       } catch (error) {
         console.error("Error sending click to server:", error);
       }
-      res.redirect(longUrl);
     } else {
       res.status(404).json({
         message:
@@ -770,7 +773,7 @@ app.get(
           city: "Unknown",
           country_name: "Unknown",
         }));
-
+        res.redirect(longUrl);
         const linkClickRef = db.collection("link_clicks").doc(customLink);
         await linkClickRef.set(
           {
@@ -790,13 +793,15 @@ app.get(
           { merge: true }
         );
         try {
-          await fetch(`https://app-scissors-api.onrender.com/links/${uniqueId}/click`, {
-            method: "POST",
-          });
+          await fetch(
+            `https://app-scissors-api.onrender.com/links/${uniqueId}/click`,
+            {
+              method: "POST",
+            }
+          );
         } catch (error) {
           console.error("Error sending click to server:", error);
         }
-        res.redirect(longUrl);
       } else {
         res.status(404).json({
           message:
