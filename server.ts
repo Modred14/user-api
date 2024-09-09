@@ -2,7 +2,6 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
 import { v4 as uuidv4 } from "uuid";
-import { getUserLocation } from "./LocationService";
 import admin from "firebase-admin";
 
 // Initialize Firebase
@@ -17,6 +16,18 @@ const db = admin.firestore();
 const firebaseAdminAuth = admin.auth();
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+const getUserLocation = async () => {
+  try {
+    const response = await fetch('https://ipapi.co/json/');
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.error('Failed to fetch location data:', error);
+  }
+  return { city: 'Unknown' };
+};
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -699,7 +710,13 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
         },
         { merge: true }
       );
-
+      try {
+        await fetch(`https://app-scissors-api.onrender.com/links/${shortUrl}/click`, {
+          method: "POST",
+        });
+      } catch (error) {
+        console.error("Error sending click to server:", error);
+      }
       res.redirect(longUrl);
     } else {
       res.status(404).json({
@@ -770,7 +787,13 @@ app.get(
           },
           { merge: true }
         );
-
+        try {
+          await fetch(`https://app-scissors-api.onrender.com/links/${customLink}/click`, {
+            method: "POST",
+          });
+        } catch (error) {
+          console.error("Error sending click to server:", error);
+        }
         res.redirect(longUrl);
       } else {
         res.status(404).json({
