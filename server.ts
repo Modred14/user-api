@@ -694,25 +694,28 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
         city: "Unknown",
         country_name: "Unknown",
       }));
-      res.redirect(longUrl);
-      const linkClickRef = db.collection("link_clicks").doc(shortUrl);
-      await linkClickRef.set(
-        {
-          clicks: admin.firestore.FieldValue.arrayUnion({
-            linkType: "shortenedLink",
-            linkUrl: longUrl,
-            referrer: req.get("Referrer") || "direct",
-            timestamp: new Date().toISOString(),
-            createdAt: createdAt,
-            location: {
-              city: location.city,
-              country: location.country_name,
-            },
-          }),
-          clickCount: admin.firestore.FieldValue.increment(1),
+    
+
+      const clickData = {
+        referrer: req.headers.referer || "direct",
+        timestamp: new Date().toISOString(),
+        createdAt: createdAt,
+        location: {
+          city: location.city,
+          country: location.country_name,
         },
-        { merge: true }
-      );
+      };
+
+      await db
+        .collection("link_clicks")
+        .doc(uniqueId)
+        .set(
+          {
+            clicks: admin.firestore.FieldValue.arrayUnion(clickData),
+            clickCount: admin.firestore.FieldValue.increment(1),
+          },
+          { merge: true }
+        );
       try {
         await fetch(
           `https://app-scissors-api.onrender.com/links/${uniqueId}/click`,
@@ -722,7 +725,7 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
         );
       } catch (error) {
         console.error("Error sending click to server:", error);
-      }
+      }  res.redirect(longUrl);
     } else {
       res.status(404).json({
         message:
@@ -730,7 +733,11 @@ app.get("/s/:shortUrl", async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
-    res.status(500).json({ message: "Error retrieving short URL", error });
+    if (!res.headersSent) {
+      res.status(500).json({ message: "Error retrieving short URL", error });
+    } else {
+      console.error("Error after headers sent:", error);
+    }
   }
 });
 
@@ -773,25 +780,27 @@ app.get(
           city: "Unknown",
           country_name: "Unknown",
         }));
-        res.redirect(longUrl);
-        const linkClickRef = db.collection("link_clicks").doc(customLink);
-        await linkClickRef.set(
-          {
-            clicks: admin.firestore.FieldValue.arrayUnion({
-              linkType: "customLink",
-              linkUrl: longUrl,
-              referrer: req.get("Referrer") || "direct",
-              timestamp: new Date().toISOString(),
-              createdAt: createdAt,
-              location: {
-                city: location.city,
-                country: location.country_name,
-              },
-            }),
-            clickCount: admin.firestore.FieldValue.increment(1),
+     
+        const clickData = {
+          referrer: req.headers.referer || "direct",
+          timestamp: new Date().toISOString(),
+          createdAt: createdAt,
+          location: {
+            city: location.city,
+            country: location.country_name,
           },
-          { merge: true }
-        );
+        };
+  
+        await db
+          .collection("link_clicks")
+          .doc(uniqueId )
+          .set(
+            {
+              clicks: admin.firestore.FieldValue.arrayUnion(clickData),
+              clickCount: admin.firestore.FieldValue.increment(1),
+            },
+            { merge: true }
+          );
         try {
           await fetch(
             `https://app-scissors-api.onrender.com/links/${uniqueId}/click`,
@@ -801,7 +810,7 @@ app.get(
           );
         } catch (error) {
           console.error("Error sending click to server:", error);
-        }
+        }  res.redirect(longUrl);
       } else {
         res.status(404).json({
           message:
@@ -809,10 +818,13 @@ app.get(
         });
       }
     } catch (error) {
-      res.status(500).json({ message: "Error retrieving short URL", error });
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Error retrieving short URL", error });
+      } else {
+        console.error("Error after headers sent:", error);
+      }
     }
-  }
-);
+  });
 
 app.get("*", (req, res) => {
   res
